@@ -13,58 +13,66 @@ SEGMENT_SIZE = 0x1000
 
 FSMSR = 0xC0000100
 GSMSR = 0xC0000101
+TSC_AUX_MSR = 0xC0000103
+
+MSR_REGS_64 = (UC_X86_REG_RAX, UC_X86_REG_RDX, UC_X86_REG_RCX, UC_X86_REG_RIP)
+MSR_REGS_32 = (UC_X86_REG_EAX, UC_X86_REG_EDX, UC_X86_REG_ECX, UC_X86_REG_EIP)
 
 
-def set_msr(uc, msr, value, scratch=SCRATCH_ADDR):
+def set_msr(uc, msr, value, scratch=SCRATCH_ADDR, regs=MSR_REGS_64):
     """
     set the given model-specific register (MSR) to the given value.
     this will clobber some memory at the given scratch address, as it emits some code.
     """
+    reg_ax, reg_dx, reg_cx, reg_ip = regs
+
     # save clobbered registers
-    orax = uc.reg_read(UC_X86_REG_RAX)
-    ordx = uc.reg_read(UC_X86_REG_RDX)
-    orcx = uc.reg_read(UC_X86_REG_RCX)
-    orip = uc.reg_read(UC_X86_REG_RIP)
+    oax = uc.reg_read(reg_ax)
+    odx = uc.reg_read(reg_dx)
+    ocx = uc.reg_read(reg_cx)
+    oip = uc.reg_read(reg_ip)
 
     # x86: wrmsr
     buf = b'\x0f\x30'
     uc.mem_write(scratch, buf)
-    uc.reg_write(UC_X86_REG_RAX, value & 0xFFFFFFFF)
-    uc.reg_write(UC_X86_REG_RDX, (value >> 32) & 0xFFFFFFFF)
-    uc.reg_write(UC_X86_REG_RCX, msr & 0xFFFFFFFF)
+    uc.reg_write(reg_ax, value & 0xFFFFFFFF)
+    uc.reg_write(reg_dx, (value >> 32) & 0xFFFFFFFF)
+    uc.reg_write(reg_cx, msr & 0xFFFFFFFF)
     uc.emu_start(scratch, scratch + len(buf), count=1)
 
     # restore clobbered registers
-    uc.reg_write(UC_X86_REG_RAX, orax)
-    uc.reg_write(UC_X86_REG_RDX, ordx)
-    uc.reg_write(UC_X86_REG_RCX, orcx)
-    uc.reg_write(UC_X86_REG_RIP, orip)
+    uc.reg_write(reg_ax, oax)
+    uc.reg_write(reg_dx, odx)
+    uc.reg_write(reg_cx, ocx)
+    uc.reg_write(reg_ip, oip)
 
 
-def get_msr(uc, msr, scratch=SCRATCH_ADDR):
+def get_msr(uc, msr, scratch=SCRATCH_ADDR, regs=MSR_REGS_64):
     """
     fetch the contents of the given model-specific register (MSR).
     this will clobber some memory at the given scratch address, as it emits some code.
     """
+    reg_ax, reg_dx, reg_cx, reg_ip = regs
+
     # save clobbered registers
-    orax = uc.reg_read(UC_X86_REG_RAX)
-    ordx = uc.reg_read(UC_X86_REG_RDX)
-    orcx = uc.reg_read(UC_X86_REG_RCX)
-    orip = uc.reg_read(UC_X86_REG_RIP)
+    oax = uc.reg_read(reg_ax)
+    odx = uc.reg_read(reg_dx)
+    ocx = uc.reg_read(reg_cx)
+    oip = uc.reg_read(reg_ip)
 
     # x86: rdmsr
     buf = b'\x0f\x32'
     uc.mem_write(scratch, buf)
-    uc.reg_write(UC_X86_REG_RCX, msr & 0xFFFFFFFF)
+    uc.reg_write(reg_cx, msr & 0xFFFFFFFF)
     uc.emu_start(scratch, scratch + len(buf), count=1)
     eax = uc.reg_read(UC_X86_REG_EAX)
     edx = uc.reg_read(UC_X86_REG_EDX)
 
     # restore clobbered registers
-    uc.reg_write(UC_X86_REG_RAX, orax)
-    uc.reg_write(UC_X86_REG_RDX, ordx)
-    uc.reg_write(UC_X86_REG_RCX, orcx)
-    uc.reg_write(UC_X86_REG_RIP, orip)
+    uc.reg_write(reg_ax, oax)
+    uc.reg_write(reg_dx, odx)
+    uc.reg_write(reg_cx, ocx)
+    uc.reg_write(reg_ip, oip)
 
     return (edx << 32) | (eax & 0xFFFFFFFF)
 
@@ -100,6 +108,14 @@ def get_fs(uc):
 
 
 class TestGetSetMSR(regress.RegressTest):
+    def test_tsc_aux_msr_32(self):
+        uc = Uc(UC_ARCH_X86, UC_MODE_32)
+        uc.mem_map(SCRATCH_ADDR, SCRATCH_SIZE)
+
+        value = 0x1234567887654321
+        set_msr(uc, TSC_AUX_MSR, value, regs=MSR_REGS_32)
+        self.assertEqual(value, get_msr(uc, TSC_AUX_MSR, regs=MSR_REGS_32))
+
     def test_msr(self):
         uc = Uc(UC_ARCH_X86, UC_MODE_64)
         uc.mem_map(SCRATCH_ADDR, SCRATCH_SIZE)
