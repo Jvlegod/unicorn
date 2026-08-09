@@ -423,6 +423,11 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
             return true;
         }
 
+#if defined(TARGET_I386)
+        /* The hook consumed the exception, so clear x86 nested-exception state. */
+        env->old_exception = -1;
+#endif
+
         cpu->exception_index = -1;
     }
 
